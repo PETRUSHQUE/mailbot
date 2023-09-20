@@ -89,7 +89,7 @@ def retrieve_emails() -> list | None:
     if status != OK_STATUS:
         raise imaplib.IMAP4_SSL.error
     result = result[-1].decode()
-    logger.info(UNREAD_EMAILS.format(amount=len(result.split(' '))))
+    logger.info(UNREAD_EMAILS.format(amount=len(result)))
     if not result:
         status, result = imap.close()
         if isinstance(result[-1], bytes):
@@ -101,6 +101,7 @@ def retrieve_emails() -> list | None:
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return None
     else:
+        logger.info(UNREAD_EMAILS.format(amount=len(result.split(' '))))
         result = result.split(' ')
         msgs = []
         for num in result:
