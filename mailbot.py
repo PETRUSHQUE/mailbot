@@ -42,6 +42,7 @@ TELEGRAM_ERROR: str = ('Ошибка в работе программы: Не д
 TIMEOUT_ERROR: str = ('Ошибка таймаута. {error}')
 CONNECTION_ERROR: str = ('Ошибка соединения. {error}')
 IMAP_ERROR: str = 'Ошибка IMAP. {error}'
+IMAP_DEBUG: str = '{status} {result}'
 SSL_ERROR: str = 'Ошибка SSL. {error}'
 UNREAD_EMAILS: str = 'Количество сообщений в почтовом ящике: {amount}'
 MESSAGE_SENT: str = 'Бот отправил сообщение "{message}".'
@@ -72,7 +73,7 @@ def retrieve_emails() -> list | None:
     try:
         status, _result = imap.login(EMAIL_LOGIN, EMAIL_PASS)
         _result = _result[-1].decode()
-        logger.debug(f'{status} {_result}')
+        logger.debug(IMAP_DEBUG.format(status=status, result=_result))
     except imaplib.IMAP4_SSL.error as error:
         logger.exception(IMAP_ERROR.format(error=error))
     if status != OK_STATUS:
@@ -101,8 +102,14 @@ def retrieve_emails() -> list | None:
             if status != OK_STATUS:
                 raise imaplib.IMAP4_SSL.error
             msgs.append(msg)
-        imap.close()
-        imap.logout()
+        status, result = imap.close()
+        if isinstance(result, bytes):
+            result = result.decode()
+        logger.debug(IMAP_DEBUG.format(status=status, result=result))
+        status, result = imap.logout()
+        if isinstance(result, bytes):
+            result = result.decode()
+        logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return msgs
 
 
