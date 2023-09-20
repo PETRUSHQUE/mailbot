@@ -88,8 +88,14 @@ def retrieve_emails() -> list | None:
         raise imaplib.IMAP4_SSL.error
     result = result[-1].decode()
     if not result:
-        imap.close()
-        imap.logout()
+        status, result = imap.close()
+        if isinstance(result, bytes):
+            result = result.decode()
+        logger.debug(IMAP_DEBUG.format(status=status, result=result))
+        status, result = imap.logout()
+        if isinstance(result, bytes):
+            result = result.decode()
+        logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return None
     else:
         result = result.split(' ')
