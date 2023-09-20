@@ -44,7 +44,9 @@ CONNECTION_ERROR: str = ('Ошибка соединения. {error}')
 IMAP_ERROR: str = 'Ошибка IMAP. {error}'
 IMAP_DEBUG: str = '{status} {result}'
 SSL_ERROR: str = 'Ошибка SSL. {error}'
-UNREAD_EMAILS: str = 'Количество сообщений в почтовом ящике: {amount}'
+TOTAL_EMAILS: str = 'Количество сообщений в почтовом ящике: {amount}'
+UNREAD_EMAILS: str = ('Количество непрочитанных сообщений в '
+                      'почтовом ящике: {amount}')
 MESSAGE_SENT: str = 'Бот отправил сообщение "{message}".'
 EMAIL_MESSAGE: str = ('Тема: {thread}\n\nОт: {from_}\nДата: {date}\n'
                       'Текст сообщения:\n{message}')
@@ -80,13 +82,14 @@ def retrieve_emails() -> list | None:
         raise imaplib.IMAP4_SSL.error(
             IMAP_ERROR.format(error=_result))
     status, messages = imap.select(INBOX)
-    logger.info(UNREAD_EMAILS.format(amount=messages[-1].decode()))
+    logger.info(TOTAL_EMAILS.format(amount=messages[-1].decode()))
     if status != OK_STATUS:
         raise imaplib.IMAP4_SSL.error
     status, result = imap.uid('search', MESSAGE_TYPE, 'ALL')
     if status != OK_STATUS:
         raise imaplib.IMAP4_SSL.error
     result = result[-1].decode()
+    logger.info(UNREAD_EMAILS.format(amount=len(result.split(' '))))
     if not result:
         status, result = imap.close()
         if isinstance(result[-1], bytes):
