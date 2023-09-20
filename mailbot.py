@@ -89,12 +89,12 @@ def retrieve_emails() -> list | None:
     result = result[-1].decode()
     if not result:
         status, result = imap.close()
-        if isinstance(result, bytes):
-            result = result.decode()
+        if isinstance(result[-1], bytes):
+            result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         status, result = imap.logout()
-        if isinstance(result, bytes):
-            result = result.decode()
+        if isinstance(result[-1], bytes):
+            result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return None
     else:
@@ -109,12 +109,12 @@ def retrieve_emails() -> list | None:
                 raise imaplib.IMAP4_SSL.error
             msgs.append(msg)
         status, result = imap.close()
-        if isinstance(result, bytes):
-            result = result.decode()
+        if isinstance(result[-1], bytes):
+            result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         status, result = imap.logout()
-        if isinstance(result, bytes):
-            result = result.decode()
+        if isinstance(result[-1], bytes):
+            result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return msgs
 
