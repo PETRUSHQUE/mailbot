@@ -1,4 +1,5 @@
 """Телеграм бот, отправляющий новый письма с почты."""
+import datetime
 import email
 import imaplib
 import logging
@@ -44,7 +45,8 @@ IMAP_ERROR: str = 'Ошибка IMAP. {error}'
 SSL_ERROR: str = 'Ошибка SSL. {error}'
 UNREAD_EMAILS: str = 'Количество сообщений в почтовом ящике: {amount}'
 MESSAGE_SENT: str = 'Бот отправил сообщение "{message}".'
-EMAIL_MESSAGE: str = 'Тема: {thread}\n\nТекст сообщения:\n{message}'
+EMAIL_MESSAGE: str = ('Тема: {thread}\n\nОт: {from_}\nДата: {date}\n'
+                      'Текст сообщения:\n{message}')
 ERROR: str = 'Сбой в работе программы: {error}'
 
 
@@ -70,7 +72,7 @@ def retrieve_emails() -> list | None:
     try:
         status, _result = imap.login(EMAIL_LOGIN, EMAIL_PASS)
         _result = _result[-1].decode()
-        logger.debug('{status} {_result}')
+        logger.debug(f'{status} {_result}')
     except imaplib.IMAP4_SSL.error as error:
         logger.exception(IMAP_ERROR.format(error=error))
     if status != OK_STATUS:
@@ -108,6 +110,8 @@ def convert_email(msg: bytes) -> str:
     """Преобразовывание сообщений к читабельному виду."""
     msg = email.message_from_bytes(msg[0][1])
     thread = decode_header(msg['Subject'])[0][0]
+    date = datetime.datetime(*email.utils.parsedate_tz(msg['Date'])[:5])
+    from_ = msg['Return-path']
     if isinstance(thread, bytes):
         thread = thread.decode()
     payload = msg.get_payload(decode=True).decode()
@@ -124,7 +128,8 @@ def convert_email(msg: bytes) -> str:
                 data = data + body[index] + body[index+1] + '\n'
     else:
         data = payload
-    return EMAIL_MESSAGE.format(thread=thread, message=data)
+    return EMAIL_MESSAGE.format(
+        thread=thread, from_=from_, date=date, message=data)
 
 
 def check_tokens() -> bool:
