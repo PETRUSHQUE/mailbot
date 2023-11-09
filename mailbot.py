@@ -171,7 +171,6 @@ def main() -> None:
         except Exception as error:
             message = ERROR.format(error=error)
             logger.exception(message)
-            send_message(bot, message)
         time.sleep(RETRY_TIME)
 
 
