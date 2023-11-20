@@ -5,12 +5,15 @@ import imaplib
 import logging
 import logging.config
 import os
+import pytz
 import time
-from email.header import decode_header
 
 import telegram
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from email.header import decode_header
+
+from dbconn import DB
 
 
 LOGFILENAME: str = __file__.replace('\\', '\\\\') + '.log'
@@ -22,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+MDB = DB()
 EMAIL_IMAP_SERVER: str = os.getenv('EMAIL_IMAP_SERVER')
 EMAIL_LOGIN: str = os.getenv('EMAIL_LOGIN')
 EMAIL_PASS: str = os.getenv('EMAIL_PASSWORD')
@@ -30,10 +34,11 @@ TELEGRAM_CHAT_ID: str = os.getenv('TELEGRAM_CHAT_ID')
 TOKENS: tuple = ('TELEGRAM_CHAT_ID', 'TELEGRAM_TOKEN', )
 
 RETRY_TIME: int = 60  # в секундах
-MESSAGE_TYPE: str = 'UNSEEN'  # UNSEEN/ALL
+MESSAGE_TYPE: str = 'ALL'  # UNSEEN/ALL
 CALLBACK_THREAD: str = 'Форма обратной связи'
 OK_STATUS: str = 'OK'
 INBOX: str = 'INBOX'
+TIMEZONE: str = 'Europe/Moscow'
 
 TOKEN_ERROR: str = ('Отсутствует обязательная переменная окружения: {var}. '
                     'Программа принудительно завершена.')
@@ -51,15 +56,17 @@ MESSAGE_SENT: str = 'Бот отправил сообщение "{message}".'
 EMAIL_MESSAGE: str = ('Тема: {thread}\n\nОт: {from_}\nДата: {date}\n'
                       'Текст сообщения:\n{message}')
 ERROR: str = 'Сбой в работе программы: {error}'
+KEYBOARD_INTERRUPT: str = 'Работа программы прервана с клавиатуры.'
 
 
-def send_message(bot: telegram.Bot, text: str) -> None:
+def send_message(bot: telegram.Bot, text: str) -> telegram.Message | None:
     """Отправка сообщения."""
     try:
-        bot.send_message(TELEGRAM_CHAT_ID, text)
+        answer = bot.send_message(TELEGRAM_CHAT_ID, text)
         logger.info(MESSAGE_SENT.format(message=text))
     except telegram.error.TelegramError as error:
         logger.exception(TELEGRAM_ERROR.format(message=text, error=error))
+    return answer
 
 
 def retrieve_emails() -> list | None:
@@ -89,7 +96,6 @@ def retrieve_emails() -> list | None:
     if status != OK_STATUS:
         raise imaplib.IMAP4_SSL.error
     result = result[-1].decode()
-    logger.info(UNREAD_EMAILS.format(amount=len(result)))
     if not result:
         status, result = imap.close()
         if isinstance(result[-1], bytes):
@@ -101,9 +107,8 @@ def retrieve_emails() -> list | None:
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
         return None
     else:
-        logger.info(UNREAD_EMAILS.format(amount=len(result.split(' '))))
         result = result.split(' ')
-        msgs = []
+        msgs = dict.fromkeys(result)
         for num in result:
             try:
                 status, msg = imap.uid('fetch', num.encode(), '(RFC822)')
@@ -111,27 +116,38 @@ def retrieve_emails() -> list | None:
                 logger.exception(IMAP_ERROR.format(error=error))
             if status != OK_STATUS:
                 raise imaplib.IMAP4_SSL.error
-            msgs.append(msg)
+            msgs[num] = _email(msg)
         status, result = imap.close()
         if isinstance(result[-1], bytes):
             result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
+        MDB.db_commitmails(msgs)
+        unread_mails = MDB._db_fetchmany(False)
+        logger.info(UNREAD_EMAILS.format(amount=len(unread_mails)))
         status, result = imap.logout()
         if isinstance(result[-1], bytes):
             result = result[-1].decode()
         logger.debug(IMAP_DEBUG.format(status=status, result=result))
-        return msgs
+        return unread_mails
 
 
-def convert_email(msg: bytes) -> str:
-    """Преобразовывание сообщений к читабельному виду."""
+def _email(msg) -> tuple:
+    """Преобразование сообщения."""
     msg = email.message_from_bytes(msg[0][1])
     thread = decode_header(msg['Subject'])[0][0]
-    date = datetime.datetime(*email.utils.parsedate_tz(msg['Date'])[:5])
-    from_ = msg['Return-path']
+    date = str(datetime.datetime(
+        *email.utils.parsedate_tz(msg['Date'])[:5]).astimezone(
+            pytz.timezone(TIMEZONE)))
+    sender = msg['Return-path']
     if isinstance(thread, bytes):
         thread = thread.decode()
     payload = msg.get_payload(decode=True).decode()
+    return (thread, date, sender, payload)
+
+
+def convert_email(msg: tuple) -> str:
+    """Преобразовывание сообщений к читабельному виду."""
+    thread, date, from_, payload = msg
     if thread == CALLBACK_THREAD:
         soup = BeautifulSoup(payload, features='html.parser')
 
@@ -161,16 +177,21 @@ def main() -> None:
     """Основная логика работы бота."""
     if not check_tokens():
         return
+    if not MDB.db_connect():
+        return
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     while True:
         try:
             emails = retrieve_emails()
             if emails:
-                for _email in emails:
-                    send_message(bot, convert_email(_email))
+                for msg in emails:
+                    if send_message(bot, convert_email(msg[1:])):
+                        MDB.db_setreadone(msg[0])
         except Exception as error:
-            message = ERROR.format(error=error)
-            logger.exception(message)
+            logger.exception(ERROR.format(error=error))
+        except KeyboardInterrupt:
+            MDB._db_exit()
+            logger.info(KEYBOARD_INTERRUPT)
         time.sleep(RETRY_TIME)
 
 
