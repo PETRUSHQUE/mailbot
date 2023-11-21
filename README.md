@@ -1,4 +1,3 @@
-![workflow](https://github.com/petrushque/mailbot/actions/workflows/mailbot_workflow.yml/badge.svg)
 ## mailbot
 Простой телеграм-бот отправляющий уведомления в телеграм о новых полученных письмах.
 Не умеет работать с вложениями, равно как и с multipart письмами.
