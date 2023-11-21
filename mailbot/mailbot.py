@@ -1,11 +1,10 @@
 """Телеграм бот, отправляющий новый письма с почты."""
-import datetime
+import datetime as dt
 import email
 import imaplib
 import logging
 import logging.config
 import os
-import pytz
 import time
 
 import telegram
@@ -15,12 +14,7 @@ from email.header import decode_header
 
 from dbconn import DB
 
-
-LOGFILENAME: str = __file__.replace('\\', '\\\\') + '.log'
-
-logging.config.fileConfig('logging.conf',
-                          disable_existing_loggers=False,
-                          defaults={'logfilename': LOGFILENAME})
+logging.config.fileConfig('logging.conf', disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -38,7 +32,8 @@ MESSAGE_TYPE: str = 'ALL'  # UNSEEN/ALL
 CALLBACK_THREAD: str = 'Форма обратной связи'
 OK_STATUS: str = 'OK'
 INBOX: str = 'INBOX'
-TIMEZONE: str = 'Europe/Moscow'
+DATEFORMAT: str = '%Y-%m-%d %H:%M'
+TIMEDELTA: int = 3
 
 TOKEN_ERROR: str = ('Отсутствует обязательная переменная окружения: {var}. '
                     'Программа принудительно завершена.')
@@ -135,9 +130,8 @@ def _email(msg) -> tuple:
     """Преобразование сообщения."""
     msg = email.message_from_bytes(msg[0][1])
     thread = decode_header(msg['Subject'])[0][0]
-    date = str(datetime.datetime(
-        *email.utils.parsedate_tz(msg['Date'])[:5]).astimezone(
-            pytz.timezone(TIMEZONE)))
+    date = (dt.datetime(*email.utils.parsedate(msg['Date'])[:5]) +
+            dt.timedelta(hours=TIMEDELTA)).strftime(DATEFORMAT)
     sender = msg['Return-path']
     if isinstance(thread, bytes):
         thread = thread.decode()
@@ -189,11 +183,12 @@ def main() -> None:
                         MDB.db_setreadone(msg[0])
         except Exception as error:
             logger.exception(ERROR.format(error=error))
-        except KeyboardInterrupt:
-            MDB._db_exit()
-            logger.info(KEYBOARD_INTERRUPT)
         time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        MDB._db_exit()
+        logger.info(KEYBOARD_INTERRUPT)
