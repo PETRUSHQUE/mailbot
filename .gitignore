@@ -133,7 +133,6 @@ venv.bak/
 *.sqlite3
 
 # logs
-logs/
 .log
 
 # Spyder project settings
